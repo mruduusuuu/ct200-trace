@@ -90,3 +90,19 @@ def test_running_header_footer_removal_is_conservative():
     pages = [[L(p, 5, "ACME CONFIDENTIAL"), L(p, 300, f"body {p}"), L(p, 580, f"Page {p}")] for p in (1, 2, 3)]
     kept, removed = _strip_running_lines(pages, 595)
     assert len(removed) == 6 and all(len(k) == 1 for k in kept)
+
+
+def test_page_without_text_layer_is_an_error_not_silent_empty_output(tmp_path):
+    import pymupdf
+    d = pymupdf.open()
+    d.new_page()
+    f = tmp_path / "scan.pdf"
+    d.save(str(f))
+    parsed = parse_pdf(str(f))
+    assert [i.code for i in parsed.errors] == ["PAGE_WITHOUT_TEXT"]
+    from app.db import Base, make_engine, make_session_factory
+    from app.versioning import IngestRejected, ingest_pdf
+    eng = make_engine("sqlite://"); Base.metadata.create_all(eng)
+    import pytest
+    with make_session_factory(eng)() as s, pytest.raises(IngestRejected):
+        ingest_pdf(s, str(f), "scan.pdf")

@@ -220,6 +220,9 @@ def parse_pdf(path: str) -> ParsedDocument:
     page_lines, page_tables = [], []
     for p_i, page in enumerate(doc, start=1):
         lines = _page_lines(page, p_i)
+        if not lines:  # scanned/image-only page: no OCR fallback here, so say so loudly instead of returning nothing
+            issues.append(Issue("PAGE_WITHOUT_TEXT", "error",
+                                f"page {p_i} has no text layer (scanned or blank); OCR fallback is not implemented", page=p_i))
         page_lines.append(lines)
     page_h = doc[0].rect.height
     page_lines, removed = _strip_running_lines(page_lines, page_h)
