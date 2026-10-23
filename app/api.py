@@ -196,6 +196,9 @@ def node_changes(node_id: str, from_version: int | None = None, to_version: int 
     if a is None:
         out.update(status="added", own_changed=False, diff=None, subtree_changed=None, first_seen_version=hist[0].version.number)
         return out
+    if from_v == to_v and b.change_status == "added":   # first appears in this very version
+        out.update(status="added", own_changed=False, diff=None, subtree_changed=None, first_seen_version=from_v)
+        return out
     own = a.content_hash != b.content_hash
     sa = {n.logical_node_id: n for n in repo.subtree(s, a, include_self=False)}
     sb = {n.logical_node_id: n for n in repo.subtree(s, b, include_self=False)}
