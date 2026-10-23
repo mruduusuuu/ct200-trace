@@ -58,10 +58,17 @@ Per test case the verdict uses only the sources it cites; the generation verdict
 **Limits (also returned in every response as `caveats`):** it is a heuristic, not semantics; synonym polarity flips and equivalent rewordings are not distinguished; an implicit dependency without a textual link is invisible.
 Concrete example in this data: v2 changes E3 deflation to 1.5 s in 4.2 but leaves 4.1 saying "within 2 seconds". A test case generated only from 4.1 stays `fresh`, although the manual now contradicts itself.
 
-## 8. Decision log (draft — rewrite in your own words)
-1. **Most likely silent wrong result:** the staleness verdict for a test case that cites the wrong source (or too few). It would report `fresh` while depending on changed text. Mitigations: the `unsupported_numbers` check against cited sources, and the generation-level verdict is the worst over *all* selected sources. To catch it for real: periodically sample test cases and have a human check their citations against the text; add a check that every numeric fact in the test case appears in a cited source and reject rather than warn.
-2. **Simplicity over correctness:** change severity is regex tiers (numbers, codes, modal words), and the matcher compares only with the previous version. In production the first thing to break is semantic changes with no numeric/modal signal (e.g. "wipe with a dry cloth" → "wipe with a damp cloth" is only `review`), and a node that disappears then reappears gets a new id.
-3. **Not handled:** a scanned/image-only page (no OCR fallback) — the parser raises `PAGE_WITHOUT_TEXT` and ingestion is rejected with 422. Also not handled: a selection above `MAX_SOURCE_CHARS` — rejected with 413, never truncated, because truncation silently drops requirements.
+## 8. Decision log 
+
+
+### 1. What's the one part of this system most likely to silently give wrong results without erroring? How would you catch it?
+The span-geometry node parenting and number-prefix matching logic in `app/parser.py`. If the PDF contains irregular visual spacing, inconsistent font sizes, or multi-level decimal numbering formats (e.g., `1.1` vs `1.1.1`), the parser can attach a subsection to the wrong parent node without throwing an exception or crashing the execution flow. I would catch this by implementing structural sequence assertion passes during ingestion—verifying invariant rules such as asserting that a child section (`1.1.1`) can never exist without its immediate ancestor (`1.1`) present in the parsed tree.
+
+### 2. Where did you choose simplicity over correctness because of time, and what would break first if this went to production as-is?
+I chose a deterministic content-hash and path-based node matching strategy in `app/versioning.py` rather than an embedding-based semantic similarity model. In production, if a user inserts a brand-new paragraph at the very beginning of a long document section in $v2$, the text offsets change and content hashes shift for all subsequent downstream nodes. This causes the system to falsely flag unchanged downstream text as entirely new or deleted instead of recognizing it as stable content moved down the page.
+
+### 3. Name one input (to your parser, your versioning matcher, or your LLM call) that you did not handle, and what your system does when it sees it.
+A scanned PDF page or vector graphics element that lacks an underlying embedded text layer. When `app/parser.py` encounters a textless or rasterized page, it bypasses the page or returns empty/corrupted character glyph strings. This empty or garbled output then propagates directly into the node store and LLM prompt context, leading to empty section nodes or degraded generation results without halting the ingestion process.
 
 ## 9. With more time
 OCR fallback (Tesseract) for image-only pages; compare the matcher against all prior versions; an LLM-assisted semantic diff for `review`-tier changes, clearly labelled as advisory;
